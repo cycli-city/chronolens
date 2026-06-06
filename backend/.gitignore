@@ -1,0 +1,11 @@
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.env
+chroma_db/
+audit_log.jsonl
+*.pdf
+*.docx
+test_*.pdf
+*.tmp
