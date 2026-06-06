@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Fragment } from "react";
 import { useDropzone } from "react-dropzone";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -612,6 +612,7 @@ function DiffPanel({ docId, versions }) {
   );
 }
 /* ---------- Causal Graph Panel ---------- */
+/* ---------- Causal Graph Panel ---------- */
 function GraphPanel({ docId }) {
   const [result, setResult] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -639,47 +640,68 @@ function GraphPanel({ docId }) {
       {error && <div className="error-bar">{error}</div>}
 
       {result && (
-        <div className="graph-wrap">
+        <div className="causal-graph">
           {result.nodes.map((node, i) => {
             const edge = result.edges.find((e) => e.from_version === node.version);
+            const isLast = i === result.nodes.length - 1;
+            const mag = edge?.change_magnitude || 0;
+
+            const lineStyle = {
+              "--thick": mag > 0.5 ? "5px" : mag > 0.2 ? "3px" : "2px",
+              "--col": mag > 0.5 ? "var(--amber)" : mag > 0.2 ? "var(--copper)" : "var(--rule-bright)",
+              "--glow": mag > 0.5 ? "0 0 12px rgba(212,154,63,0.5)" : "none",
+            };
+
             return (
-              <div key={node.version}>
+              <Fragment key={node.version}>
                 <motion.div
-                  className="graph-node"
-                  initial={{ opacity: 0, x: -10 }}
+                  className={`cg-row node ${isLast ? "latest" : ""}`}
+                  initial={{ opacity: 0, x: -16 }}
                   animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: i * 0.1 }}
+                  transition={{ delay: i * 0.15 }}
                 >
-                  <div className="graph-node-ver">Version {node.version}</div>
-                  <div className="graph-node-date">{node.timestamp}</div>
-                  <div className="graph-node-name">{node.doc_name}</div>
+                  <div className="cg-spine">
+                    <div className="cg-circle">{node.version}</div>
+                  </div>
+                  <div className="cg-card">
+                    <div className="cg-card-ver">Version {node.version}</div>
+                    <div className="cg-card-date">{node.timestamp}</div>
+                    <div className="cg-card-name">{node.doc_name}</div>
+                  </div>
                 </motion.div>
 
                 {edge && (
                   <motion.div
-                    className="graph-edge"
+                    className="cg-row edge"
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
-                    transition={{ delay: i * 0.1 + 0.05 }}
+                    transition={{ delay: i * 0.15 + 0.08 }}
                   >
-                    <div className="graph-edge-cause">↳ {edge.inferred_cause}</div>
-                    <div className="graph-edge-meta">
-                      <span className={`conf-label ${edge.confidence}`}>
-                        {edge.confidence} confidence
-                      </span>
-                      <div className="edge-counts">
-                        {edge.summary.added > 0 && <span className="edge-count added">+{edge.summary.added}</span>}
-                        {edge.summary.removed > 0 && <span className="edge-count removed">−{edge.summary.removed}</span>}
-                        {edge.summary.modified > 0 && <span className="edge-count modified">~{edge.summary.modified}</span>}
+                    <div className="cg-spine">
+                      <div className="cg-line" style={lineStyle} />
+                    </div>
+                    <div className={`cg-edge-card ${edge.confidence}`}>
+                      <div className="cg-cause">↳ {edge.inferred_cause}</div>
+                      <div className="cg-edge-meta">
+                        <span className={`cg-conf ${edge.confidence}`}>
+                          {edge.confidence} confidence
+                        </span>
+                        <div className="cg-counts">
+                          {edge.summary.added > 0 && <span className="cnt added">+{edge.summary.added}</span>}
+                          {edge.summary.removed > 0 && <span className="cnt removed">−{edge.summary.removed}</span>}
+                          {edge.summary.modified > 0 && <span className="cnt modified">~{edge.summary.modified}</span>}
+                        </div>
+                        <div className="cg-mag">
+                          <div className="cg-mag-bar">
+                            <div className="cg-mag-fill" style={{ width: `${Math.round(mag * 100)}%` }} />
+                          </div>
+                          <span className="cg-mag-num">{Math.round(mag * 100)}%</span>
+                        </div>
                       </div>
-                      <div className="mag-bar">
-                        <div className="mag-fill" style={{ width: `${Math.round(edge.change_magnitude * 100)}%` }} />
-                      </div>
-                      <span className="mag-label">{Math.round(edge.change_magnitude * 100)}% changed</span>
                     </div>
                   </motion.div>
                 )}
-              </div>
+              </Fragment>
             );
           })}
         </div>
