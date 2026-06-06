@@ -91,3 +91,9 @@ export async function causalGraph(documentId) {
     return res.data;
   } catch (e) { throw new Error(errMsg(e), { cause: e }); }
 }
+export async function listDocuments() {
+  try {
+    const res = await client.get("/api/documents/list");
+    return res.data;
+  } catch (e) { throw new Error(errMsg(e), { cause: e }); }
+}

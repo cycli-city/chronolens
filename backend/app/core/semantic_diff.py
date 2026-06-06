@@ -44,9 +44,9 @@ class SemanticDiffEngine:
         Bn = B / (np.linalg.norm(B, axis=1, keepdims=True) + 1e-10)
         return An @ Bn.T
 
-    def diff(self, document_id: str, version_a: int, version_b: int) -> dict:
-        chunks_a = self.vs.get_version_chunks(document_id, version_a)
-        chunks_b = self.vs.get_version_chunks(document_id, version_b)
+    def diff(self, user_id: str, document_id: str, version_a: int, version_b: int) -> dict:
+        chunks_a = self.vs.get_version_chunks(user_id, document_id, version_a)
+        chunks_b = self.vs.get_version_chunks(user_id, document_id, version_b)
 
         if not chunks_a and not chunks_b:
             return {"error": "No chunks found for either version."}

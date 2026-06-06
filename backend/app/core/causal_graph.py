@@ -30,8 +30,8 @@ class CausalGraphEngine:
             max_tokens=1800,
         )
 
-    def build(self, document_id: str) -> dict:
-        versions = self.vs.get_all_versions(document_id)
+    def build(self, user_id: str, document_id: str) -> dict:
+        versions = self.vs.get_all_versions(user_id, document_id)
 
         if not versions:
             return {"error": f"No versions found for '{document_id}'."}
@@ -51,7 +51,7 @@ class CausalGraphEngine:
             va = versions[i]["version"]
             vb = versions[i + 1]["version"]
 
-            diff = self.differ.diff(document_id, va, vb)
+            diff = self.differ.diff(user_id, document_id, va, vb)
             summary = diff.get("summary", {})
 
             # Collect the actual changed text for cause inference

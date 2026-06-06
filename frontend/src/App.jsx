@@ -9,7 +9,7 @@ import { supabase } from "./supabase";
 import {
   uploadDocument, getVersions, getStats,
   askQuestion, compareVersions, getTimeline,
-  semanticDiff, causalGraph
+  semanticDiff, causalGraph, listDocuments
 } from "./api/client";
 
 const DOC_TYPES = ["general", "contract", "policy", "regulation", "report", "memo"];
@@ -137,7 +137,17 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (user) getStats().then(setStats).catch(() => {});
+    if (user) {
+      getStats().then(setStats).catch(() => {});
+      listDocuments()
+        .then((data) => {
+          if (data?.documents?.length) {
+            setKnownDocs(data.documents);
+            saveKnownDocs(data.documents);
+          }
+        })
+        .catch(() => {});
+    }
   }, [user]);
 
   useEffect(() => {
