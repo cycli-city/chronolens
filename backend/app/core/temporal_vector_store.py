@@ -28,8 +28,8 @@ class TemporalVectorStore:
     def _embed(self, texts: List[str]) -> List[List[float]]:
         result = self.embedder(texts)
         if isinstance(result, np.ndarray):
-            return result.tolist()
-        return [list(v) for v in result]
+            return [[float(x) for x in row] for row in result]
+        return [[float(x) for x in row] for row in result]
 
     # ─────────────────────── WRITE ───────────────────────
 
