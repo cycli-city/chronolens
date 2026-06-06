@@ -1,20 +1,16 @@
 import axios from "axios";
+import { supabase } from "../supabase";
 
 const BASE_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 
-export function getApiKey() {
-  return localStorage.getItem("chronolens_api_key") || "";
-}
-
-export function setApiKey(key) {
-  localStorage.setItem("chronolens_api_key", key);
-}
-
 const client = axios.create({ baseURL: BASE_URL });
 
-client.interceptors.request.use((config) => {
-  const key = getApiKey();
-  if (key) config.headers["X-API-Key"] = key;
+// Attach Supabase JWT as API key on every request
+client.interceptors.request.use(async (config) => {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session?.access_token) {
+    config.headers["X-API-Key"] = session.access_token;
+  }
   return config;
 });
 
@@ -77,6 +73,7 @@ export async function getTimeline(documentId) {
     return res.data;
   } catch (e) { throw new Error(errMsg(e), { cause: e }); }
 }
+
 export async function semanticDiff(documentId, versionA, versionB) {
   try {
     const res = await client.post("/api/query/semantic-diff", {
@@ -87,6 +84,7 @@ export async function semanticDiff(documentId, versionA, versionB) {
     return res.data;
   } catch (e) { throw new Error(errMsg(e), { cause: e }); }
 }
+
 export async function causalGraph(documentId) {
   try {
     const res = await client.get(`/api/query/causal-graph/${documentId}`);

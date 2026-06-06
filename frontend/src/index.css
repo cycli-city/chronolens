@@ -399,22 +399,85 @@ body::before {
 .source-chip b { color: var(--amber); }
 
 /* ===== KEY GATE ===== */
-.key-gate {
-  max-width: 460px;
-  margin: 80px auto;
-  text-align: center;
-  padding: 48px 40px;
-  border: 1px solid var(--rule);
+/* ===== AUTH GATE ===== */
+.auth-wrap {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.auth-box {
+  width: 100%;
+  max-width: 420px;
   background: var(--bg-card);
+  border: 1px solid var(--rule);
   border-radius: 2px;
+  padding: 48px 40px;
 }
-.key-gate h2 {
+.auth-logo {
   font-family: var(--font-display);
-  font-weight: 500;
-  font-size: 28px;
-  margin-bottom: 10px;
+  font-size: 42px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin-bottom: 4px;
 }
-.key-gate p { color: var(--ink-soft); font-size: 14px; margin-bottom: 24px; }
+.auth-logo .accent { color: var(--amber); font-style: italic; }
+.auth-tagline {
+  font-family: var(--font-display);
+  font-style: italic;
+  color: var(--ink-soft);
+  font-size: 15px;
+  margin-bottom: 36px;
+}
+.auth-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--rule);
+  margin-bottom: 28px;
+}
+.auth-tab {
+  flex: 1;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--ink-faint);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 10px;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  margin-bottom: -1px;
+}
+.auth-tab.active { color: var(--amber); border-bottom-color: var(--amber); }
+.auth-error {
+  background: rgba(196,96,74,0.1);
+  border: 1px solid var(--danger);
+  color: #e88e7a;
+  padding: 10px 14px;
+  border-radius: 2px;
+  font-size: 13px;
+  margin-bottom: 16px;
+  font-family: var(--font-mono);
+}
+.auth-success {
+  background: rgba(138,169,107,0.1);
+  border: 1px solid var(--success);
+  color: var(--success);
+  padding: 10px 14px;
+  border-radius: 2px;
+  font-size: 13px;
+  margin-bottom: 16px;
+  font-family: var(--font-mono);
+}
+.auth-footer {
+  margin-top: 20px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--ink-faint);
+  font-family: var(--font-mono);
+}
 
 /* ===== MISC ===== */
 .empty-state {

@@ -3,11 +3,13 @@ import { useDropzone } from "react-dropzone";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Archive, Upload, Search, GitCompare, Layers,
-  Key, FileText, ArrowRight, Clock, Plus, Microscope, Network
+  FileText, ArrowRight, Clock, Plus, Microscope, Network, LogOut
 } from "lucide-react";
+import { supabase } from "./supabase";
 import {
-  getApiKey, setApiKey, uploadDocument, getVersions,
-  getStats, askQuestion, compareVersions, getTimeline, semanticDiff, causalGraph
+  uploadDocument, getVersions, getStats,
+  askQuestion, compareVersions, getTimeline,
+  semanticDiff, causalGraph
 } from "./api/client";
 
 const DOC_TYPES = ["general", "contract", "policy", "regulation", "report", "memo"];
@@ -20,38 +22,127 @@ function saveKnownDocs(docs) {
   localStorage.setItem("chronolens_docs", JSON.stringify(docs));
 }
 
+/* ─────────────────────────────────────────
+   AUTH GATE
+───────────────────────────────────────── */
+function AuthGate({ onAuth }) {
+  const [tab, setTab] = useState("login");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+
+  async function handleLogin() {
+    setBusy(true); setError(""); setSuccess("");
+    const { data, error: err } = await supabase.auth.signInWithPassword({ email, password });
+    setBusy(false);
+    if (err) return setError(err.message);
+    onAuth(data.user);
+  }
+
+  async function handleSignup() {
+    setBusy(true); setError(""); setSuccess("");
+    const { error: err } = await supabase.auth.signUp({ email, password });
+    setBusy(false);
+    if (err) return setError(err.message);
+    setSuccess("Account created — check your email to confirm, then log in.");
+    setTab("login");
+  }
+
+  function submit() { tab === "login" ? handleLogin() : handleSignup(); }
+
+  return (
+    <div className="auth-wrap">
+      <motion.div
+        className="auth-box"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+      >
+        <div className="auth-logo">Chrono<span className="accent">Lens</span></div>
+        <div className="auth-tagline">Reading documents across the dimension of time.</div>
+
+        <div className="auth-tabs">
+          <button className={`auth-tab ${tab === "login" ? "active" : ""}`} onClick={() => { setTab("login"); setError(""); setSuccess(""); }}>
+            Sign In
+          </button>
+          <button className={`auth-tab ${tab === "signup" ? "active" : ""}`} onClick={() => { setTab("signup"); setError(""); setSuccess(""); }}>
+            Create Account
+          </button>
+        </div>
+
+        {error && <div className="auth-error">{error}</div>}
+        {success && <div className="auth-success">{success}</div>}
+
+        <div className="field">
+          <label className="field-label">Email</label>
+          <input className="input" type="email" placeholder="you@example.com"
+            value={email} onChange={(e) => setEmail(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && submit()} />
+        </div>
+        <div className="field">
+          <label className="field-label">Password</label>
+          <input className="input" type="password" placeholder="••••••••"
+            value={password} onChange={(e) => setPassword(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && submit()} />
+        </div>
+
+        <button className="btn btn-primary" onClick={submit} disabled={busy}>
+          {busy ? <span className="spinner" /> : tab === "login" ? "Sign In" : "Create Account"}
+        </button>
+
+        <div className="auth-footer">
+          {tab === "login" ? "No account?" : "Already have one?"}&nbsp;
+          <span style={{ color: "var(--amber)", cursor: "pointer" }}
+            onClick={() => { setTab(tab === "login" ? "signup" : "login"); setError(""); }}>
+            {tab === "login" ? "Sign up free" : "Sign in"}
+          </span>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────
+   MAIN APP
+───────────────────────────────────────── */
 export default function App() {
-  const [apiKey, setKey] = useState(getApiKey());
-  const [keyInput, setKeyInput] = useState("");
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [knownDocs, setKnownDocs] = useState(loadKnownDocs());
   const [activeDoc, setActiveDoc] = useState(null);
   const [versions, setVersions] = useState([]);
   const [stats, setStats] = useState({ total_chunks: 0 });
   const [mode, setMode] = useState("ask");
 
+  // Check existing session on load
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      setLoading(false);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
   const refreshVersions = useCallback(async (docId) => {
     if (!docId) return;
     try {
       const data = await getVersions(docId);
       setVersions(data.versions || []);
-    } catch {
-      setVersions([]);
-    }
+    } catch { setVersions([]); }
   }, []);
 
   useEffect(() => {
-    if (apiKey) getStats().then(setStats).catch(() => {});
-  }, [apiKey]);
+    if (user) getStats().then(setStats).catch(() => {});
+  }, [user]);
 
   useEffect(() => {
     if (activeDoc) refreshVersions(activeDoc);
   }, [activeDoc, refreshVersions]);
-
-  function handleSaveKey() {
-    if (!keyInput.trim()) return;
-    setApiKey(keyInput.trim());
-    setKey(keyInput.trim());
-  }
 
   function registerDoc(docId) {
     if (!knownDocs.includes(docId)) {
@@ -61,39 +152,43 @@ export default function App() {
     }
   }
 
+  async function handleSignOut() {
+    await supabase.auth.signOut();
+    setUser(null);
+    setActiveDoc(null);
+    setVersions([]);
+  }
+
   const today = new Date().toLocaleDateString("en-US", {
     weekday: "long", year: "numeric", month: "long", day: "numeric"
   });
 
-  if (!apiKey) {
+  if (loading) {
     return (
-      <div className="key-gate">
-        <Key size={32} color="var(--amber)" style={{ marginBottom: 16 }} />
-        <h2>Enter the Archive</h2>
-        <p>ChronoLens requires your API key to access the document intelligence engine. Find it in your backend <code>.env</code> file.</p>
-        <div className="field">
-          <input
-            className="input"
-            type="password"
-            placeholder="X-API-Key"
-            value={keyInput}
-            onChange={(e) => setKeyInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleSaveKey()}
-          />
-        </div>
-        <button className="btn btn-primary" onClick={handleSaveKey}>
-          Unlock <ArrowRight size={14} />
-        </button>
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <span className="spinner" style={{ width: 24, height: 24, borderWidth: 3 }} />
       </div>
     );
   }
+
+  if (!user) return <AuthGate onAuth={setUser} />;
 
   return (
     <>
       <header className="masthead">
         <div className="masthead-toprule">
           <span>Temporal Document Intelligence</span>
-          <span>Est. 2026 · Amritsar</span>
+          <span style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--ink-faint)" }}>
+              {user.email}
+            </span>
+            <button
+              onClick={handleSignOut}
+              style={{ background: "transparent", border: "none", color: "var(--ink-faint)", cursor: "pointer", display: "flex", alignItems: "center", gap: 4, fontFamily: "var(--font-mono)", fontSize: 11 }}
+            >
+              <LogOut size={12} /> Sign out
+            </button>
+          </span>
         </div>
         <motion.h1
           className="masthead-title"
@@ -141,13 +236,6 @@ export default function App() {
               getStats().then(setStats).catch(() => {});
             }}
           />
-
-          <button
-            className="settings-btn"
-            onClick={() => { setApiKey(""); setKey(""); setActiveDoc(null); }}
-          >
-            <Key size={10} style={{ marginRight: 4 }} /> Change API Key
-          </button>
         </aside>
 
         <main className="workspace">
@@ -275,7 +363,7 @@ function UploadPanel({ activeDoc, onUploaded }) {
       setDocName("");
       setVersion((v) => Number(v) + 1);
     } catch (e) {
-        setError(e.message || "Upload failed");
+      setError(e.message || "Upload failed");
     } finally {
       setBusy(false);
     }
@@ -501,7 +589,9 @@ function EvolvePanel({ docId }) {
       )}
     </div>
   );
-}/* ---------- Semantic Diff Panel ---------- */
+}
+
+/* ---------- Semantic Diff Panel ---------- */
 function DiffPanel({ docId, versions }) {
   const [va, setVa] = useState("");
   const [vb, setVb] = useState("");
@@ -611,7 +701,7 @@ function DiffPanel({ docId, versions }) {
     </div>
   );
 }
-/* ---------- Causal Graph Panel ---------- */
+
 /* ---------- Causal Graph Panel ---------- */
 function GraphPanel({ docId }) {
   const [result, setResult] = useState(null);
