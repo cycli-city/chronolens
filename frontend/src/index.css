@@ -710,3 +710,35 @@ body::before {
   font-size: 11px; color: var(--ink-faint);
   min-width: 36px;
 }
+/* ===== REGULATORY EVIDENCE ===== */
+.cg-evidence {
+  margin: 10px 0 14px;
+  border-left: 2px solid var(--copper);
+  padding-left: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cg-ev-item {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: baseline;
+}
+.cg-ev-date {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--copper);
+  letter-spacing: 0.08em;
+}
+.cg-ev-title {
+  font-size: 12px;
+  color: var(--ink);
+  font-weight: 500;
+  flex: 1;
+}
+.cg-ev-score {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-faint);
+}

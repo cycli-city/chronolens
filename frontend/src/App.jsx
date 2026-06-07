@@ -782,6 +782,19 @@ function GraphPanel({ docId }) {
                     </div>
                     <div className={`cg-edge-card ${edge.confidence}`}>
                       <div className="cg-cause">↳ {edge.inferred_cause}</div>
+                      {edge.correlated_events?.length > 0 && (
+                        <div className="cg-evidence">
+                          {edge.correlated_events.map((ev, ei) => (
+                            <div key={ei} className="cg-ev-item">
+                              <span className="cg-ev-date">{ev.event_date}</span>
+                              <span className="cg-ev-title">{ev.title}</span>
+                              <span className="cg-ev-score">
+                                {ev.days_before_change}d prior · sem={ev.semantic_score.toFixed(2)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                       <div className="cg-edge-meta">
                         <span className={`cg-conf ${edge.confidence}`}>
                           {edge.confidence} confidence

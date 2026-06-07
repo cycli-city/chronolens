@@ -1,9 +1,11 @@
 import os
 import json
+from datetime import date
 from langchain_groq import ChatGroq
 from langchain_core.messages import HumanMessage, SystemMessage
 from app.core.temporal_vector_store import TemporalVectorStore
 from app.core.semantic_diff import SemanticDiffEngine
+from app.core.event_correlator import EventCorrelator
 
 
 class CausalGraphEngine:
@@ -14,20 +16,23 @@ class CausalGraphEngine:
     Edges  = transitions between consecutive versions, each carrying:
                - diff summary (added/removed/modified counts)
                - change magnitude (the change_ratio)
-               - inferred cause (LLM reasoning over what changed and why)
+               - correlated regulatory events (real citations with dates)
+               - inferred cause (LLM reasoning GROUNDED in real events)
 
-    The novelty: it doesn't just diff pairs in isolation — it reasons over
-    the WHOLE chain to infer the narrative direction and likely drivers.
+    The key upgrade over v1: LLM no longer guesses blindly.
+    It receives real regulatory events that occurred near each change
+    and uses them as evidence for its causal explanation.
     """
 
     def __init__(self):
         self.vs = TemporalVectorStore()
         self.differ = SemanticDiffEngine()
+        self.correlator = EventCorrelator()
         self.llm = ChatGroq(
             api_key=os.getenv("GROQ_API_KEY"),
             model_name="llama-3.1-8b-instant",
-            temperature=0.2,
-            max_tokens=1800,
+            temperature=0.1,
+            max_tokens=2000,
         )
 
     def build(self, user_id: str, document_id: str) -> dict:
@@ -46,41 +51,56 @@ class CausalGraphEngine:
         nodes = [self._node(v) for v in versions]
         edges = []
 
-        # Build an edge for each consecutive version pair
         for i in range(len(versions) - 1):
-            va = versions[i]["version"]
-            vb = versions[i + 1]["version"]
+            va = versions[i]
+            vb = versions[i + 1]
 
-            diff = self.differ.diff(user_id, document_id, va, vb)
+            diff = self.differ.diff(user_id, document_id, va["version"], vb["version"])
             summary = diff.get("summary", {})
 
-            # Collect the actual changed text for cause inference
+            # Collect changed chunks for correlation
+            changed_chunks = [
+                c for c in diff.get("changes", [])
+                if c["type"] in ("modified", "removed", "added")
+            ]
+
+            # Correlate with real regulatory events
+            correlated_events = self.correlator.correlate_transition(
+                change_date=vb["timestamp"],
+                changed_chunks=changed_chunks,
+                top_k=3,
+            )
+
+            # Build change snippets for LLM
             change_snippets = []
-            for c in diff.get("changes", []):
+            for c in changed_chunks[:4]:
                 if c["type"] == "modified":
                     change_snippets.append(
-                        f"MODIFIED: {c.get('explanation', '')} "
-                        f"(before: {c.get('before','')[:150]}...) "
-                        f"(after: {c.get('after','')[:150]}...)"
+                        f"MODIFIED ({c.get('explanation', 'semantic change')}): "
+                        f"{c.get('before', '')[:120]}... → {c.get('after', '')[:120]}..."
                     )
                 elif c["type"] == "added":
-                    change_snippets.append(f"ADDED: {c.get('text','')[:150]}...")
+                    change_snippets.append(f"ADDED: {c.get('text', '')[:150]}...")
                 elif c["type"] == "removed":
-                    change_snippets.append(f"REMOVED: {c.get('text','')[:150]}...")
+                    change_snippets.append(f"REMOVED: {c.get('text', '')[:150]}...")
 
-            edges.append({
-                "from_version": va,
-                "to_version": vb,
-                "from_date": versions[i]["timestamp"],
-                "to_date": versions[i + 1]["timestamp"],
+            edge = {
+                "from_version": va["version"],
+                "to_version": vb["version"],
+                "from_date": va["timestamp"],
+                "to_date": vb["timestamp"],
                 "summary": summary,
                 "change_magnitude": summary.get("change_ratio", 0),
-                "change_snippets": change_snippets[:6],
-                "inferred_cause": None,  # filled by LLM below
-            })
+                "change_snippets": change_snippets[:4],
+                "correlated_events": correlated_events,
+                "inferred_cause": None,
+                "confidence": "low",
+                "evidence_based": len(correlated_events) > 0,
+            }
+            edges.append(edge)
 
-        # Infer causes across the whole chain (single LLM pass for coherence)
-        self._infer_causes(document_id, edges)
+        # Infer causes grounded in real events
+        self._infer_causes_grounded(document_id, edges)
 
         return {
             "document_id": document_id,
@@ -96,10 +116,11 @@ class CausalGraphEngine:
             "doc_name": v["doc_name"],
         }
 
-    def _infer_causes(self, document_id: str, edges: list):
+    def _infer_causes_grounded(self, document_id: str, edges: list):
         """
-        One LLM pass over the full chain so the inferred causes form a
-        coherent narrative rather than disconnected guesses.
+        LLM cause inference grounded in real regulatory events.
+        For transitions with correlated events, the LLM must cite them.
+        For transitions with no correlated events, it falls back to reasoning.
         """
         if not edges:
             return
@@ -107,24 +128,45 @@ class CausalGraphEngine:
         chain_desc = []
         for idx, e in enumerate(edges):
             snippets = "\n      ".join(e["change_snippets"]) or "no substantive textual changes"
+            magnitude = round(e["change_magnitude"] * 100)
+
+            # Format correlated events as evidence
+            if e["correlated_events"]:
+                evidence = "\n      ".join([
+                    f"• {ev['title']} ({ev['event_date']}, "
+                    f"{ev['days_before_change']} days before change, "
+                    f"semantic similarity={ev['semantic_score']:.2f}): "
+                    f"{ev['description'][:150]}"
+                    for ev in e["correlated_events"]
+                ])
+                evidence_block = f"REGULATORY EVIDENCE:\n      {evidence}"
+            else:
+                evidence_block = "REGULATORY EVIDENCE: No correlated events found in database."
+
             chain_desc.append(
-                f"Transition {idx} (v{e['from_version']} on {e['from_date']} "
-                f"-> v{e['to_version']} on {e['to_date']}):\n"
-                f"   change magnitude: {round(e['change_magnitude']*100)}%\n"
-                f"   changes:\n      {snippets}"
+                f"Transition {idx} "
+                f"(v{e['from_version']} {e['from_date']} → v{e['to_version']} {e['to_date']}):\n"
+                f"   change magnitude: {magnitude}%\n"
+                f"   changes:\n      {snippets}\n"
+                f"   {evidence_block}"
             )
         chain_text = "\n\n".join(chain_desc)
 
         system = (
-            "You are a document forensics analyst. Given a chronological chain of "
-            "changes to a single document, infer the LIKELY CAUSE or DRIVER behind "
-            "each transition (e.g. regulatory pressure, risk mitigation, scope "
-            "expansion, error correction, negotiation, policy update). "
-            "Reason across the whole chain so causes form a coherent story. "
-            'Respond ONLY with a JSON array: [{"transition":0,"cause":"...","confidence":"high|medium|low"}]. '
-            "One concise sentence per cause. No markdown, no preamble."
+            "You are a document forensics analyst with access to real regulatory event data.\n"
+            "For each transition:\n"
+            "- If REGULATORY EVIDENCE is provided, you MUST cite it. Start with 'Following [event name] on [date]...'\n"
+            "- If no evidence is found, reason from the changes themselves.\n"
+            "- Be specific, concise, one sentence per transition.\n"
+            "- Include confidence: 'high' if regulatory evidence matches, 'medium' if partial, 'low' if no evidence.\n\n"
+            'Respond ONLY with JSON: [{"transition":0,"cause":"...","confidence":"high|medium|low"}]\n'
+            "No markdown, no preamble."
         )
-        user = f"Document: {document_id}\n\nChange chain:\n{chain_text}\n\nReturn the JSON array now:"
+        user = (
+            f"Document: {document_id}\n\n"
+            f"Full transition chain with regulatory evidence:\n{chain_text}\n\n"
+            "Return the JSON array now:"
+        )
 
         try:
             resp = self.llm.invoke([
@@ -138,7 +180,16 @@ class CausalGraphEngine:
                 info = by_idx.get(idx, {})
                 e["inferred_cause"] = info.get("cause", "Cause could not be determined.")
                 e["confidence"] = info.get("confidence", "low")
-        except Exception:
+        except Exception as ex:
+            print(f"Causal inference failed: {ex}")
             for e in edges:
-                e["inferred_cause"] = "Cause inference unavailable."
-                e["confidence"] = "low"
+                if e["correlated_events"]:
+                    top = e["correlated_events"][0]
+                    e["inferred_cause"] = (
+                        f"Likely triggered by {top['title']} ({top['event_date']}, "
+                        f"{top['days_before_change']} days prior)"
+                    )
+                    e["confidence"] = "medium"
+                else:
+                    e["inferred_cause"] = "Cause could not be determined."
+                    e["confidence"] = "low"
