@@ -153,3 +153,11 @@ async def get_stats(user_id: str = Depends(verify_api_key)):
 @router.get("/audit-log")
 async def get_audit_log(user_id: str = Depends(verify_api_key)):
     return {"entries": auditor.get_recent(50)}
+
+@router.post("/admin/seed-events")
+async def seed_regulatory_events(user_id: str = Depends(verify_api_key)):
+    from app.core.event_correlator import EventCorrelator
+    from app.core.regulatory_corpus import REGULATORY_EVENTS
+    correlator = EventCorrelator()
+    count = correlator.seed_events(REGULATORY_EVENTS)
+    return {"seeded": count}
