@@ -16,3 +16,4 @@ python-jose[cryptography]
 passlib[bcrypt]
 PyJWT
 supabase
+beautifulsoup4
